@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LaRosa Onboarding Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f9fafb;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Ctext x='10' y='45' font-size='30' fill='%2310b981'%3E$%3C/text%3E%3C/svg%3E");
+            background-repeat: repeat;
+            font-family: Arial, sans-serif;
+            font-size: 1.25rem; /* Larger base font size */
+        }
+
+        .task-completed {
+            text-decoration: line-through;
+            background-color: #d1fae5; /* Light green for completed */
+        }
+
+        .task-disabled {
+            opacity: 0.5;
+        }
+
+        h1 {
+            font-size: 2.5rem; /* Larger header */
+        }
+
+        h2 {
+            font-size: 1.75rem; /* Larger card headers */
+        }
+
+        button, select, input, label, span {
+            font-size: 1.25rem; /* Larger font for all interactive elements and text */
+        }
+
+        #logout-btn {
+            display: block; /* Ensure visibility */
+        }
+    </style>
+    <!-- Firebase SDK (Compat version for simple HTML) -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-analytics-compat.js"></script>
+</head>
+<body>
+    <header class="bg-blue-900 text-white p-6 text-center">
+        <h1 class="font-bold">LaRosa Onboarding Tracker</h1>
+    </header>
+
+    <div id="login-screen" class="max-w-md mx-auto mt-8 p-6 bg-white shadow-lg rounded-lg">
+        <label for="user-select" class="block font-medium mb-4">Select User:</label>
+        <select id="user-select" class="w-full p-3 border rounded mb-4">
+            <option value="Yousef">Yousef (Admin)</option>
+            <option value="Gigi">Gigi</option>
+            <option value="George">George</option>
+            <option value="Jasmin">Jasmin</option>
+        </select>
+        <button onclick="login()" class="w-full bg-blue-900 text-white py-3 px-4 rounded hover:bg-blue-800">Enter</button>
+    </div>
+
+    <div id="main-app" class="max-w-4xl mx-auto mt-8 p-6 bg-white shadow-lg rounded-lg hidden">
+        <div class="mb-6">
+            <button id="add-agent-btn" onclick="addAgent()" class="bg-blue-900 text-white py-3 px-4 rounded hover:bg-blue-800 mr-4 hidden">Add New Agent Onboarding</button>
+            <button id="logout-btn" onclick="logout()" class="bg-blue-900 text-white py-3 px-4 rounded hover:bg-blue-800">Logout</button>
+        </div>
+        <div id="onboarding-cards"></div>
+    </div>
+
+    <script>
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyB9wtZckZytnd12Bcp52LCToGGKArYiNuk",
+            authDomain: "lronb-1606c.firebaseapp.com",
+            projectId: "lronb-1606c",
+            storageBucket: "lronb-1606c.firebasestorage.app",
+            messagingSenderId: "426441812233",
+            appId: "1:426441812233:web:81a304748492c463490bd8",
+            measurementId: "G-HWZF9MXG70"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const analytics = firebase.analytics();
+
+        let currentUser = '';
+        let onboardings = [];
+        let unsubscribe = null; // For Firestore listener
+
+        const onboardingTemplateTasks = [
+            { task: 'Rec Jasmin/Gigi', assigned: ['Jasmin', 'Gigi'], completed: false },
+            { task: 'Interview Gigi', assigned: ['Gigi'], completed: false },
+            { task: 'Sending package', assigned: ['Gigi', 'George'], completed: false },
+            { task: 'Follow up on signing the package', assigned: ['George'], completed: false },
+            { task: 'Charge the agent', assigned: ['Gigi'], completed: false },
+            { task: 'Gigi to sign', assigned: ['Gigi'], completed: false },
+            { task: 'Adding the agent to DBPR', assigned: ['Gigi'], completed: false },
+            { task: 'Add the agent to my agent account', assigned: ['Gigi', 'George'], completed: false },
+            { task: 'Following up on my agent account', assigned: ['George'], completed: false },
+            { task: 'Welcome email/post', assigned: ['Yousef'], completed: false },
+            { task: 'Follow up by Yousef', assigned: ['Yousef'], completed: false },
+            { task: 'Gigi to get feedback from the agent', assigned: ['Gigi'], completed: false }
+        ];
+
+        function login() {
+            currentUser = document.getElementById('user-select').value;
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            if (currentUser === 'Yousef') {
+                document.getElementById('add-agent-btn').classList.remove('hidden');
+            }
+            document.getElementById('logout-btn').classList.remove('hidden');
+
+            // Set up real-time listener for Firestore
+            if (!unsubscribe) {
+                unsubscribe = db.collection('agents').onSnapshot(snapshot => {
+                    onboardings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    renderCards();
+                });
+            }
+        }
+
+        function logout() {
+            currentUser = '';
+            document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('add-agent-btn').classList.add('hidden');
+            document.getElementById('logout-btn').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            // Optional: Stop listener on logout if desired
+            // if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+        }
+
+        function addAgent() {
+            if (currentUser !== 'Yousef') return;
+            const name = prompt('Enter the new agent\'s name:');
+            if (name) {
+                const newTasks = onboardingTemplateTasks.map(task => ({ ...task }));
+                db.collection('agents').add({ name, tasks: newTasks });
+                // Listener will update
+            }
+        }
+
+        function removeAgent(index) {
+            if (currentUser !== 'Yousef') return;
+            if (confirm('Are you sure you want to remove this agent?')) {
+                db.collection('agents').doc(onboardings[index].id).delete();
+                // Listener will update
+            }
+        }
+
+        function updateTask(agentIndex, taskIndex, checked) {
+            const task = onboardings[agentIndex].tasks[taskIndex];
+            if (task.assigned.includes(currentUser)) {
+                task.completed = checked;
+                db.collection('agents').doc(onboardings[agentIndex].id).update({
+                    tasks: onboardings[agentIndex].tasks
+                });
+                renderCards();
+            } else {
+                renderCards();
+            }
+        }
+
+        function renderCards() {
+            const cardsContainer = document.getElementById('onboarding-cards');
+            cardsContainer.innerHTML = '';
+            onboardings.forEach((onboarding, agentIndex) => {
+                const card = document.createElement('div');
+                card.className = 'mb-6 p-4 border rounded shadow bg-gray-50';
+                
+                const header = document.createElement('h2');
+                header.className = 'font-semibold mb-4';
+                header.textContent = `Agent: ${onboarding.name}`;
+                if (currentUser === 'Yousef') {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.textContent = 'X';
+                    removeBtn.className = 'float-right text-red-500 hover:text-red-700';
+                    removeBtn.onclick = () => removeAgent(agentIndex);
+                    header.appendChild(removeBtn);
+                }
+                card.appendChild(header);
+                
+                const tasksList = document.createElement('div');
+                onboarding.tasks.forEach((task, taskIndex) => {
+                    const taskDiv = document.createElement('div');
+                    taskDiv.className = 'flex items-center mb-2';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = task.completed;
+                    checkbox.className = 'mr-2';
+                    const isAssigned = task.assigned.includes(currentUser);
+                    if (!isAssigned) {
+                        checkbox.disabled = true;
+                        taskDiv.classList.add('task-disabled');
+                    }
+                    checkbox.onchange = (e) => updateTask(agentIndex, taskIndex, e.target.checked);
+                    
+                    const label = document.createElement('span');
+                    label.textContent = `${task.task} (Assigned to: ${task.assigned.join(', ')})`;
+                    if (task.completed) {
+                        label.classList.add('task-completed');
+                    }
+                    
+                    taskDiv.appendChild(checkbox);
+                    taskDiv.appendChild(label);
+                    tasksList.appendChild(taskDiv);
+                });
+                card.appendChild(tasksList);
+                cardsContainer.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
